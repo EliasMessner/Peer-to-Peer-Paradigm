@@ -31,4 +31,11 @@ public class WeatherInfo {
     public String getLocation() {
         return location;
     }
+
+    @Override
+    public String toString() {
+        return new String("Wheather Info for "+this.location+" at "+this.timestamp.toString()+":\n" +
+                "Temperature: "+temperature+" degrees Celsius\n" +
+                "Humidity: "+humidity+"%");
+    }
 }

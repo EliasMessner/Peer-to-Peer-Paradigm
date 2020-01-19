@@ -13,12 +13,13 @@ public class Client {
     private DatagramSocket ds;
     private WeatherInfo weather;
     int port;
-    HashMap<Integer, WeatherInfo> knownData;
+    HashMap<Integer, String> knownData;
 
     public Client(int minPort, int maxPort) {
        /* if (minPort < MIN_PORT_NUMBER || maxPort > MAX_PORT_NUMBER || minPort > maxPort) {
             throw new IllegalArgumentException("Invalid start port: " + port);
         }*/
+        this.knownData = new HashMap<Integer, String>();
         this.isRunning = false;
         this.portRange = new int[(maxPort - minPort) + 1];
         for (int i = minPort; i <= maxPort; i++) {
@@ -27,7 +28,11 @@ public class Client {
         }
     }
 
-    private void start(String location) throws IOException, InterruptedException {
+    public void start(String location) throws IOException, InterruptedException {
+        if (!findOpenPortAndConnect()) {
+            System.out.println("No Port available");
+            return;
+        }
         this.weather = new WeatherInfo(location);
         isRunning = true;
         startListeningThread();
@@ -46,12 +51,8 @@ public class Client {
             @Override
             public void run() {
                 try {
-                    if (!findOpenPortAndConnect()) {
-                        System.out.println("No Port available");
-                        return;
-                    }
                     start(location);
-                    System.out.println(port + ": Client Thread started.");
+                    System.out.println(port + ": Client connected");
                 } catch (IOException | InterruptedException e) {
                     e.printStackTrace();
                 }
@@ -100,32 +101,42 @@ public class Client {
         try {
             buffer = packet.getData();
             String msg = new String(buffer, 0, packet.getLength());
-            if (msg == "hello") {
+            if (msg.equals("hello")) {
                 sendWeatherData(packet.getPort());
             }
             else {
-                System.out.println(this.port + ": unusual msg: "+msg);
+                System.out.println(this.port + ": got weather from "+packet.getPort()+" :"+msg);
+                this.knownData.put(new Integer(packet.getPort()), msg);
             }
-        }
-        catch (Exception e) {
-            // it's not a request so it should be a status
-            try {
-                WeatherInfo we = (WeatherInfo)bytesToObject(buffer);
-                this.knownData.put(packet.getPort(), we);
-            }
-            catch (Exception e2) {
-                System.out.println(this.port + ": received invalid status packet from "+packet.getPort());
-            }
+        } catch (IOException e) {
+            e.printStackTrace();
         }
 
     }
 
     private void sendWeatherData(int port) throws IOException {
+        System.out.println(this.port + ": Trying to send Weather to "+port);
         if (!isRunning) return;
-        byte [] req = objectToBytes(this.weather);
+        byte [] msg = this.weather.toString().getBytes();
+        try {
+            DatagramPacket packet = new DatagramPacket(msg, msg.length, InetAddress.getByName("localhost"), port);
+            ds.send(packet);
+            System.out.println(this.port + ": Done sending weather to "+port);
+        }
+        catch (Exception e) {
+            System.out.println(this.port + ": Failed to send weather Data to port "+ port);
+        }
+        System.out.println(weather.toString());
+    }
+
+    private void requestWeatherInfo(int port) throws IOException {
+        System.out.println(this.port + ": Trying to request Weather from "+port);
+        if (!isRunning) return;
+        byte [] req = ("hello".getBytes());
         try {
             DatagramPacket packet = new DatagramPacket(req, req.length, InetAddress.getByName("localhost"), port);
             ds.send(packet);
+            System.out.println(this.port + ": Done requesting weather from "+port);
         }
         catch (Exception e) {
             System.out.println(this.port + ": Failed to send weather request to port "+ port);
@@ -175,30 +186,17 @@ public class Client {
         return null;
     }
 
-    private void requestWeatherInfo(int port) throws IOException {
-        System.out.println(this.port + ": Trying to request Weather from "+port);
-        if (!isRunning) return;
-        byte [] req = ("hello".getBytes());
-        try {
-            DatagramPacket packet = new DatagramPacket(req, req.length, InetAddress.getByName("localhost"), port);
-            ds.send(packet);
-            System.out.println(this.port + ": Done requesting weather from "+port);
-        }
-        catch (Exception e) {
-            System.out.println(this.port + ": Failed to send weather request to port "+ port);
-        }
-    }
-
     private boolean findOpenPortAndConnect() throws IOException {
-        System.out.println(this.port + ": trying to find open port...");
+        System.out.println("trying to find open port...");
         boolean portFound = false;
         for (int port : portRange) {
+            if (this.port == port) continue;
             System.out.println(port);
             if (checkPortAndTryConnect(port)) {
                 this.port = port;
-                this.socket = new Socket("localhost", port);
                 portFound = true;
                 System.out.println(this.port + ": Connected to "+port);
+                break;
             }
         }
         return portFound;
@@ -216,18 +214,7 @@ public class Client {
             ds.setReuseAddress(true);
             return true;
         } catch (IOException e) {
-        } finally {
-            if (ds != null) {
-                ds.close();
-            }
 
-            if (ssocket != null) {
-                try {
-                    ssocket.close();
-                } catch (IOException e) {
-                    /* should not be thrown */
-                }
-            }
         }
 
         return false;
@@ -237,5 +224,8 @@ public class Client {
         return weather.getLocation();
     }
 
+    public WeatherInfo getWeatherInfo() {
+        return this.weather;
+    }
 
 }
