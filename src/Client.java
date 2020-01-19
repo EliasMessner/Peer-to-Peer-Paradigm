@@ -1,12 +1,21 @@
 public class Client {
 
+    private boolean isRunning;
+
     public Client() {
-        //TODO
+        this.isRunning = false;
     }
 
     private void start() {
-        advertise();
-        discoverAndReply();
+        isRunning = true;
+        while (isRunning) {
+            advertise();
+            discoverAndReply();
+        }
+    }
+
+    public void stop() {
+        isRunning = false;
     }
 
     public void startInOwnThread() {
