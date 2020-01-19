@@ -2,7 +2,9 @@ import sun.awt.windows.ThemeReader;
 
 import java.io.*;
 import java.net.*;
+import java.util.Date;
 import java.util.HashMap;
+import java.util.concurrent.TimeUnit;
 
 public class Client {
 
@@ -12,6 +14,7 @@ public class Client {
     private ServerSocket ssocket;
     private DatagramSocket ds;
     private WeatherInfo weather;
+    Date lastTimeWeatherChanged;
     int port;
     HashMap<Integer, String> knownData;
 
@@ -39,6 +42,8 @@ public class Client {
         while (isRunning) {
             advertise();
             Thread.sleep(3000);
+            if (getDateDiff(lastTimeWeatherChanged, new Date(), TimeUnit.MINUTES) > 5)
+                changWeather();
         }
     }
 
@@ -80,13 +85,6 @@ public class Client {
     }
 
     private void discoverAndReply() {
-        //TODO
-
-        /* pseudo:
-        while true:
-            listen for request
-                request found -> send answer with weather info
-         */
         byte[] data = new byte[ 1000000 ];
         DatagramPacket packet = new DatagramPacket( data, data.length ); //create packet with buffer size
         try {
@@ -127,6 +125,12 @@ public class Client {
             System.out.println(this.port + ": Failed to send weather Data to port "+ port);
         }
         System.out.println(weather.toString());
+    }
+
+    private void changWeather() {
+        String loc = this.weather.getLocation();
+        this.weather = new WeatherInfo(loc);
+        this.lastTimeWeatherChanged = new Date(); //now
     }
 
     private void requestWeatherInfo(int port) throws IOException {
@@ -222,6 +226,11 @@ public class Client {
 
     public String getLocation() {
         return weather.getLocation();
+    }
+
+    public static long getDateDiff(Date date1, Date date2, TimeUnit timeUnit) {
+        long diffInMillies = date2.getTime() - date1.getTime();
+        return timeUnit.convert(diffInMillies,TimeUnit.MILLISECONDS);
     }
 
     public WeatherInfo getWeatherInfo() {
