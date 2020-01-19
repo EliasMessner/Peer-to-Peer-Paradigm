@@ -42,7 +42,7 @@ public class Client {
         while (isRunning) {
             advertise();
             Thread.sleep(3000);
-            if (getDateDiff(lastTimeWeatherChanged, new Date(), TimeUnit.MINUTES) > 5)
+            if (checkIfTimeToChangeWeather())
                 changWeather();
         }
     }
@@ -103,7 +103,7 @@ public class Client {
                 sendWeatherData(packet.getPort());
             }
             else {
-                System.out.println(this.port + ": got weather from "+packet.getPort()+" :"+msg);
+                System.out.println(this.port + ": got weather from "+packet.getPort()+" :\n"+msg+"\n");
                 this.knownData.put(new Integer(packet.getPort()), msg);
             }
         } catch (IOException e) {
@@ -134,13 +134,13 @@ public class Client {
     }
 
     private void requestWeatherInfo(int port) throws IOException {
-        System.out.println(this.port + ": Trying to request Weather from "+port);
+        // System.out.println(this.port + ": Trying to request Weather from "+port);
         if (!isRunning) return;
         byte [] req = ("hello".getBytes());
         try {
             DatagramPacket packet = new DatagramPacket(req, req.length, InetAddress.getByName("localhost"), port);
             ds.send(packet);
-            System.out.println(this.port + ": Done requesting weather from "+port);
+            // System.out.println(this.port + ": Done requesting weather from "+port);
         }
         catch (Exception e) {
             System.out.println(this.port + ": Failed to send weather request to port "+ port);
@@ -228,7 +228,13 @@ public class Client {
         return weather.getLocation();
     }
 
-    public static long getDateDiff(Date date1, Date date2, TimeUnit timeUnit) {
+    private boolean checkIfTimeToChangeWeather() {
+        if (lastTimeWeatherChanged == null)
+            return false;
+        return getDateDiff(lastTimeWeatherChanged, new Date(), TimeUnit.MINUTES) > 5;
+    }
+
+    private static long getDateDiff(Date date1, Date date2, TimeUnit timeUnit) {
         long diffInMillies = date2.getTime() - date1.getTime();
         return timeUnit.convert(diffInMillies,TimeUnit.MILLISECONDS);
     }
@@ -237,4 +243,11 @@ public class Client {
         return this.weather;
     }
 
+    public String getKnownDataAsString() {
+        StringBuilder result = new StringBuilder("");
+        for(Integer i : this.knownData.keySet()) {
+            result.append("\n"+i.toString()+knownData.get(i)+"\n");
+        }
+        return result.toString();
+    }
 }

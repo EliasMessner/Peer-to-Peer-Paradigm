@@ -12,11 +12,16 @@ public class Main {
         };
 
         Client c1 = new Client(50000, 50010);
+        c1.startInOwnThread(locations[(int)(Math.random() * locations.length)]);
         Client c2 = new Client(50000, 50010);
         c2.startInOwnThread(locations[(int)(Math.random() * locations.length)]);
-        c1.start(locations[(int)(Math.random() * locations.length)]);
-        Thread.sleep(1000000000);
-
+        Thread.sleep(30000);
+        c1.stop();
+        Client c3 = new Client(50000, 50010);
+        c3.startInOwnThread(locations[(int)(Math.random() * locations.length)]);
+        Thread.sleep(5000);
+        System.out.println("\n\n######\n\nc3 knows: \n"+c3.getKnownDataAsString()+"\n\n#######\n\n");
+        Thread.sleep(1000000);
     }
 
 }
