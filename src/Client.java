@@ -20,20 +20,17 @@ public class Client {
             throw new IllegalArgumentException("Invalid start port: " + port);
         }*/
         this.isRunning = false;
-        this.portRange = new int[maxPort - minPort];
+        this.portRange = new int[(maxPort - minPort) + 1];
         for (int i = minPort; i <= maxPort; i++) {
+            System.out.println(i);
             portRange[i - minPort] = i;
-            knownData.put(new Integer(i), null);
         }
     }
 
     private void start(String location) throws IOException, InterruptedException {
         this.weather = new WeatherInfo(location);
-        if (!findOpenPortAndConnect()) {
-            System.out.println("No Port available");
-            return;
-        }
         isRunning = true;
+        startListeningThread();
         while (isRunning) {
             advertise();
             Thread.sleep(3000);
@@ -49,7 +46,12 @@ public class Client {
             @Override
             public void run() {
                 try {
+                    if (!findOpenPortAndConnect()) {
+                        System.out.println("No Port available");
+                        return;
+                    }
                     start(location);
+                    System.out.println(port + ": Client Thread started.");
                 } catch (IOException | InterruptedException e) {
                     e.printStackTrace();
                 }
@@ -58,24 +60,20 @@ public class Client {
         System.out.println("Client Thread started.");
     }
 
-    private void startListeningThread(String location) {
+    private void startListeningThread() {
         new Thread(new Runnable() {
             @Override
             public void run() {
-                discoverAndReply();
+                while (isRunning)
+                    discoverAndReply();
             }
         }).start();
-        System.out.println("Listening Thread started.");
+        System.out.println(this.port + ": Listening Thread started.");
     }
 
     private void advertise() throws IOException {
-        /* pseudo:
-        while true:
-            for client in 1-10:
-                send request for weather info
-         */
-
         for (int port : portRange) {
+            if (this.port == port) continue;
             requestWeatherInfo(port);
         }
     }
@@ -106,7 +104,7 @@ public class Client {
                 sendWeatherData(packet.getPort());
             }
             else {
-                System.out.println("unusual msg: "+msg);
+                System.out.println(this.port + ": unusual msg: "+msg);
             }
         }
         catch (Exception e) {
@@ -116,7 +114,7 @@ public class Client {
                 this.knownData.put(packet.getPort(), we);
             }
             catch (Exception e2) {
-                System.out.println("Not a valid Status Packet");
+                System.out.println(this.port + ": received invalid status packet from "+packet.getPort());
             }
         }
 
@@ -130,7 +128,7 @@ public class Client {
             ds.send(packet);
         }
         catch (Exception e) {
-            System.out.println("Failed to send weather request to port "+ port);
+            System.out.println(this.port + ": Failed to send weather request to port "+ port);
         }
     }
 
@@ -178,24 +176,29 @@ public class Client {
     }
 
     private void requestWeatherInfo(int port) throws IOException {
+        System.out.println(this.port + ": Trying to request Weather from "+port);
         if (!isRunning) return;
         byte [] req = ("hello".getBytes());
         try {
             DatagramPacket packet = new DatagramPacket(req, req.length, InetAddress.getByName("localhost"), port);
             ds.send(packet);
+            System.out.println(this.port + ": Done requesting weather from "+port);
         }
         catch (Exception e) {
-            System.out.println("Failed to send weather request to port "+ port);
+            System.out.println(this.port + ": Failed to send weather request to port "+ port);
         }
     }
 
     private boolean findOpenPortAndConnect() throws IOException {
+        System.out.println(this.port + ": trying to find open port...");
         boolean portFound = false;
         for (int port : portRange) {
+            System.out.println(port);
             if (checkPortAndTryConnect(port)) {
                 this.port = port;
                 this.socket = new Socket("localhost", port);
                 portFound = true;
+                System.out.println(this.port + ": Connected to "+port);
             }
         }
         return portFound;
