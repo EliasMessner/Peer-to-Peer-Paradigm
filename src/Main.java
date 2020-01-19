@@ -1,7 +1,10 @@
 import java.io.IOException;
 
+/**
+ * Die Main-Klasse des Programms.
+ * @author Elias Messner, Marius Gerull
+ */
 public class Main {
-
     public static void main(String[] args) throws InterruptedException, IOException {
         String[] locations = {
                 "Dublin",
