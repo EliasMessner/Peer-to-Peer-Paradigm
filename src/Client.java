@@ -5,7 +5,8 @@ public class Client {
     }
 
     private void start() {
-        //TODO
+        advertise();
+        discoverAndReply();
     }
 
     public void startInOwnThread() {
@@ -20,10 +21,22 @@ public class Client {
 
     private void advertise() {
         //TODo
+
+        /* pseudo:
+        while true:
+            for client in 1-10:
+                send request for weather info
+         */
     }
 
     public void discoverAndReply() {
         //TODO
+
+        /* pseudo:
+        while true:
+            listen for request
+                request found -> send answer with weather info
+         */
     }
 
 
