@@ -89,8 +89,9 @@ public class Client {
         new Thread(new Runnable() {
             @Override
             public void run() {
-                while (isRunning)
+                while (isRunning) {
                     discoverAndReply();
+                    // while(!discoverAndReply());
                     try {
                         advertise();
                         Thread.sleep(3000);
@@ -99,6 +100,7 @@ public class Client {
                     }
                     if (checkIfTimeToChangeWeather())
                         changWeather();
+                }
             }
         }).start();
         System.out.println(this.port + ": Communication Thread started.");
@@ -113,12 +115,13 @@ public class Client {
             if (this.port == port) continue;
             requestWeatherInfo(port);
         }
+        // System.out.println(this.port+": advertised");
     }
 
     /**
      * Bearbeitet ankommende Pakete anderer Clients und verwaltet diese.
      */
-    private void discoverAndReply() {
+    private boolean discoverAndReply() {
         byte[] data = new byte[ 1000000 ];
         DatagramPacket packet = new DatagramPacket( data, data.length ); //create packet with buffer size
         try {
@@ -128,12 +131,11 @@ public class Client {
             ds.setSoTimeout(timeoutBefore);
         }
         catch(java.net.SocketTimeoutException e){
-            return;
+            return false;
         }
         catch(Exception e) {
-            //timeout or other error
             e.printStackTrace();
-            return;
+            return false;
         }
         byte[] buffer = new byte[1024];
         try {
@@ -141,21 +143,23 @@ public class Client {
             String msg = new String(buffer, 0, packet.getLength());
             if (msg.equals("hello")) {
                 sendWeatherData(packet.getPort());
-            }
-            else {
-                handleWeatherInfo(packet.getPort(), buffer);
+                System.out.println(this.port+": sent weather data");
+                return true;
             }
         } catch (IOException e) {
             e.printStackTrace();
+            return false;
         }
+        handleWeatherInfo(packet.getPort(), buffer);
+        return true;
 
     }
 
     private void handleWeatherInfo(int port, byte[] bytes) {
-        System.out.println(this.port + ": got weather from "+port+" :\n"+bytes+"\n");
         WeatherInfo we = (WeatherInfo) (bytesToObject(bytes));
+        System.out.println(this.port + ": !!!got weather from "+port+":\n"+we.toString()+"\n");
         // String msg = Integer.toString(port) + " : " + we.toString();
-        if (this.knownData.get(new Integer(port)).getTimestamp().after(this.weather.getTimestamp()))
+        if (this.knownData.get(new Integer(port)) == null || this.knownData.get(new Integer(port)).getTimestamp().after(this.weather.getTimestamp()))
             this.knownData.put(new Integer(port), we);
         System.out.println("KNOWN DATA OF "+this.port+this.getKnownDataAsString());
     }
@@ -173,10 +177,11 @@ public class Client {
         try {
             DatagramPacket packet = new DatagramPacket(msg, msg.length, InetAddress.getByName("localhost"), port);
             ds.send(packet);
-            System.out.println(this.port + ": Done sending weather object to "+port);
+            System.out.println(this.port + ": !!!Done sending weather object to "+port);
         }
         catch (Exception e) {
             System.out.println(this.port + ": Failed to send weather Data to port "+ port);
+            throw e;
         }
         // System.out.println(weather.toString());
     }
@@ -188,6 +193,7 @@ public class Client {
         String loc = this.weather.getLocation();
         this.weather = new WeatherInfo(loc);
         this.lastTimeWeatherChanged = new Date(); //now
+        System.out.println(this.port+": Weather changed: "+weather.toString());
     }
 
     /**
@@ -201,13 +207,13 @@ public class Client {
         try {
             DatagramPacket packet = new DatagramPacket(req, req.length, InetAddress.getByName("localhost"), port);
             ds.send(packet);
-            System.out.println("weather requested");
+            // System.out.println("weather requested");
         }
         catch (Exception e) {
             System.out.println(this.port + ": Failed to send weather request to port "+ port);
         }
     }
-    private byte[] objectToBytes(Object o, int port) {
+    private byte[] objectToBytes(Object o, int port) throws IOException {
        o = (WeatherInfo)o;
         ByteArrayOutputStream bos = new ByteArrayOutputStream(port);
         ObjectOutputStream out = null;
@@ -219,15 +225,17 @@ public class Client {
             return yourBytes;
 
         } catch (IOException e) {
+            throw e;
             // e.printStackTrace();
         } finally {
             try {
                 bos.close();
             } catch (IOException ex) {
                 // ignore close exception
+                throw ex;
             }
         }
-        return null;
+        // return null;
     }
 
     private Object bytesToObject(byte[] bytes) {
@@ -265,7 +273,7 @@ public class Client {
             if (checkPortAndTryConnect(port)) {
                 this.port = port;
                 portFound = true;
-                System.out.println(this.port + ": Connected to "+port);
+                System.out.println(this.port + ": found open port ---> "+port);
                 break;
             }
         }

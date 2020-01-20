@@ -1,10 +1,11 @@
+import java.io.Serializable;
 import java.util.Date;
 
 /**
  * Klasse für verschiedene Wetterverhältnisse an verschiedenen Standorten.
  * @author Elias Messner, Marius Gerull
  */
-public class WeatherInfo {
+public class WeatherInfo implements Serializable {
 
     private String location;
     private int temperature;

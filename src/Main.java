@@ -16,6 +16,7 @@ public class Main {
 
         Client c1 = new Client(50000, 50010);
         c1.startInOwnThread(locations[(int)(Math.random() * locations.length)]);
+        Thread.sleep(2500);
         Client c2 = new Client(50000, 50010);
         c2.startInOwnThread(locations[(int)(Math.random() * locations.length)]);
         Thread.sleep(10000);
