@@ -18,7 +18,9 @@ public class Main {
         c1.startInOwnThread(locations[(int)(Math.random() * locations.length)]);
         Client c2 = new Client(50000, 50010);
         c2.startInOwnThread(locations[(int)(Math.random() * locations.length)]);
-        Thread.sleep(30000);
+        Thread.sleep(10000);
+        System.out.println("Client 3 joining in 10 sec...");
+        Thread.sleep(10000);
         c1.stop();
         Client c3 = new Client(50000, 50010);
         c3.startInOwnThread(locations[(int)(Math.random() * locations.length)]);

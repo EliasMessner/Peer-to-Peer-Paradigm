@@ -48,13 +48,13 @@ public class Client {
         }
         this.weather = new WeatherInfo(location);
         isRunning = true;
-        startListeningThread();
-        while (isRunning) {
+        startCommunicationThread();
+        /*while (isRunning) {
             advertise();
             Thread.sleep(3000);
             if (checkIfTimeToChangeWeather())
                 changWeather();
-        }
+        }*/
     }
 
     public void stop() {
@@ -81,17 +81,27 @@ public class Client {
     }
 
     /**
-     * Erzeugt neuen Thread für Client und lässt ihn auf Anfragen warten.
-     */
-    private void startListeningThread() {
+     * erzeugt neuen Thread und hört auf Anfragen von anderen clients,
+     * regelnmäßig advertising, also Anfragen an alle ports in portrange
+     *
+     * */
+    private void startCommunicationThread() {
         new Thread(new Runnable() {
             @Override
             public void run() {
                 while (isRunning)
                     discoverAndReply();
+                    try {
+                        advertise();
+                        Thread.sleep(3000);
+                    } catch (IOException | InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                    if (checkIfTimeToChangeWeather())
+                        changWeather();
             }
         }).start();
-        System.out.println(this.port + ": Listening Thread started.");
+        System.out.println(this.port + ": Communication Thread started.");
     }
 
     /**
@@ -112,7 +122,13 @@ public class Client {
         byte[] data = new byte[ 1000000 ];
         DatagramPacket packet = new DatagramPacket( data, data.length ); //create packet with buffer size
         try {
+            int timeoutBefore = ds.getSoTimeout();
+            ds.setSoTimeout(5000); //5 sec
             ds.receive(packet);
+            ds.setSoTimeout(timeoutBefore);
+        }
+        catch(java.net.SocketTimeoutException e){
+            return;
         }
         catch(Exception e) {
             //timeout or other error
@@ -127,13 +143,19 @@ public class Client {
                 sendWeatherData(packet.getPort());
             }
             else {
-                System.out.println(this.port + ": got weather from "+packet.getPort()+" :\n"+msg+"\n");
-                this.knownData.put(new Integer(packet.getPort()), msg);
+                handleWeatherInfo(packet.getPort(), buffer);
             }
         } catch (IOException e) {
             e.printStackTrace();
         }
 
+    }
+
+    private void handleWeatherInfo(int port, byte[] bytes) {
+        System.out.println(this.port + ": got weather from "+port+" :\n"+bytes+"\n");
+        WeatherInfo we = (WeatherInfo) (bytesToObject(bytes));
+        String msg = Integer.toString(port) + " : " + we.toString();
+        this.knownData.put(new Integer(port), msg);
     }
 
     /**
@@ -144,16 +166,17 @@ public class Client {
     private void sendWeatherData(int port) throws IOException {
         System.out.println(this.port + ": Trying to send Weather to "+port);
         if (!isRunning) return;
-        byte [] msg = this.weather.toString().getBytes();
+        // byte [] msg = this.weather.toString().getBytes();
+        byte [] msg = objectToBytes(this.weather, this.port);
         try {
             DatagramPacket packet = new DatagramPacket(msg, msg.length, InetAddress.getByName("localhost"), port);
             ds.send(packet);
-            System.out.println(this.port + ": Done sending weather to "+port);
+            System.out.println(this.port + ": Done sending weather object to "+port);
         }
         catch (Exception e) {
             System.out.println(this.port + ": Failed to send weather Data to port "+ port);
         }
-        System.out.println(weather.toString());
+        // System.out.println(weather.toString());
     }
 
     /**
@@ -181,7 +204,50 @@ public class Client {
             System.out.println(this.port + ": Failed to send weather request to port "+ port);
         }
     }
-    
+    private byte[] objectToBytes(Object o, int port) {
+       o = (WeatherInfo)o;
+        ByteArrayOutputStream bos = new ByteArrayOutputStream(port);
+        ObjectOutputStream out = null;
+        try {
+            out = new ObjectOutputStream(bos);
+            out.writeObject(o);
+            out.flush();
+            byte[] yourBytes = bos.toByteArray();
+            return yourBytes;
+
+        } catch (IOException e) {
+            // e.printStackTrace();
+        } finally {
+            try {
+                bos.close();
+            } catch (IOException ex) {
+                // ignore close exception
+            }
+        }
+        return null;
+    }
+
+    private Object bytesToObject(byte[] bytes) {
+        ByteArrayInputStream bis = new ByteArrayInputStream(bytes);
+        ObjectInput in = null;
+        try {
+            in = new ObjectInputStream(bis);
+            Object o = in.readObject();
+            return o;
+        } catch (IOException | ClassNotFoundException e) {
+            e.printStackTrace();
+        } finally {
+            try {
+                if (in != null) {
+                    in.close();
+                }
+            } catch (IOException ex) {
+                // ignore close exception
+            }
+        }
+        return null;
+    }
+
     /**
      * Sucht nach offenem Port in der Portrange und connected zu diesem.
      * @return  boolean portFound (true, falls freier Port gefunden wurde)
@@ -215,7 +281,12 @@ public class Client {
             ds = new DatagramSocket(port);
             ds.setReuseAddress(true);
             return true;
-        } catch (IOException e) {
+        }
+         catch(java.net.BindException e) {
+             // port in use, move on
+             return false;
+        }
+         catch (IOException e) {
              e.printStackTrace();
         }
 
