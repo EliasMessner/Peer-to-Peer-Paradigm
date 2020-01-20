@@ -18,7 +18,7 @@ public class Client {
     private WeatherInfo weather;
     Date lastTimeWeatherChanged;
     int port;
-    HashMap<Integer, WeatherInfo> knownData;
+    HashMap<String, WeatherInfo> knownData; //<location, weatherInfo>
 
     /**
      * Konstruktor für einen Client. Sucht zwischen den übergebenen Parametern nach einem freien Port.
@@ -47,6 +47,7 @@ public class Client {
             return;
         }
         this.weather = new WeatherInfo(location);
+        this.knownData.put(location, this.weather);
         isRunning = true;
         startCommunicationThread();
         /*while (isRunning) {
@@ -142,49 +143,60 @@ public class Client {
             buffer = packet.getData();
             String msg = new String(buffer, 0, packet.getLength());
             if (msg.equals("hello")) {
-                sendWeatherData(packet.getPort());
-                System.out.println(this.port+": sent weather data");
+                sendAllWeatherData(packet.getPort());
+                System.out.println(this.port+": sent weather data to "+packet.getPort());
                 return true;
             }
         } catch (IOException e) {
             e.printStackTrace();
             return false;
         }
-        handleWeatherInfo(packet.getPort(), buffer);
+        handleWeatherInfo(buffer);
         return true;
 
     }
 
-    private void handleWeatherInfo(int port, byte[] bytes) {
-        WeatherInfo we = (WeatherInfo) (bytesToObject(bytes));
-        System.out.println(this.port + ": !!!got weather from "+port+":\n"+we.toString()+"\n");
-        // String msg = Integer.toString(port) + " : " + we.toString();
-        if (this.knownData.get(new Integer(port)) == null || this.knownData.get(new Integer(port)).getTimestamp().after(this.weather.getTimestamp()))
-            this.knownData.put(new Integer(port), we);
-        System.out.println("KNOWN DATA OF "+this.port+this.getKnownDataAsString());
+    private void sendAllWeatherData(int destinationPort) throws IOException {
+        for (String loc : this.knownData.keySet()){
+            sendWeatherData(knownData.get(loc), destinationPort);
+        }
     }
 
     /**
      * Übergibt anderen Clients auf einem bestimmten Port ein eigenes Datenpaket.
-     * @param port
+     * @param destinationPort
      * @throws IOException
      */
-    private void sendWeatherData(int port) throws IOException {
-        System.out.println(this.port + ": Trying to send Weather to "+port);
+    private void sendWeatherData(WeatherInfo wi, int destinationPort) throws IOException {
+        // System.out.println(this.port + ": Trying to send Weather to "+port);
         if (!isRunning) return;
         // byte [] msg = this.weather.toString().getBytes();
-        byte [] msg = objectToBytes(this.weather, this.port);
+        byte [] msg = objectToBytes(wi);
         try {
-            DatagramPacket packet = new DatagramPacket(msg, msg.length, InetAddress.getByName("localhost"), port);
+            DatagramPacket packet = new DatagramPacket(msg, msg.length, InetAddress.getByName("localhost"), destinationPort);
             ds.send(packet);
-            System.out.println(this.port + ": !!!Done sending weather object to "+port);
+            // System.out.println(this.port + ": !!!Done sending weather object to "+port);
         }
         catch (Exception e) {
-            System.out.println(this.port + ": Failed to send weather Data to port "+ port);
+            // System.out.println(this.port + ": Failed to send weather Data to port "+ port);
             throw e;
         }
         // System.out.println(weather.toString());
     }
+
+
+
+    private void handleWeatherInfo(byte[] bytes) {
+        WeatherInfo wi = (WeatherInfo)bytesToObject(bytes);
+        System.out.println(this.port + ": !!!got weather in "+wi.getLocation());
+        if (this.knownData.get(wi.getLocation()) == null
+                || this.knownData.get(wi.getLocation()).getTimestamp().before(wi.getTimestamp()))
+            this.knownData.put(wi.getLocation(), wi);
+
+        System.out.println("updated knownData");
+        System.out.println("KNOWN DATA OF "+this.port+":\n"+this.getKnownDataAsString());
+    }
+
 
     /**
      * Ändert das Wetter am Standort des Clients.
@@ -213,8 +225,8 @@ public class Client {
             System.out.println(this.port + ": Failed to send weather request to port "+ port);
         }
     }
-    private byte[] objectToBytes(Object o, int port) throws IOException {
-       o = (WeatherInfo)o;
+    private byte[] objectToBytes(Object o) throws IOException {
+        // o = (WeatherInfo)o;
         ByteArrayOutputStream bos = new ByteArrayOutputStream(port);
         ObjectOutputStream out = null;
         try {
@@ -332,8 +344,8 @@ public class Client {
      */
     public String getKnownDataAsString() {
         StringBuilder result = new StringBuilder("");
-        for(Integer i : this.knownData.keySet()) {
-            result.append("\n"+i.toString()+knownData.get(i)+"\n");
+        for(String loc : this.knownData.keySet()) {
+            result.append("\n"+loc+knownData.get(loc)+"\n");
         }
         return result.toString();
     }
