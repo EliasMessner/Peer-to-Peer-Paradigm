@@ -18,7 +18,7 @@ public class Client {
     private WeatherInfo weather;
     Date lastTimeWeatherChanged;
     int port;
-    HashMap<Integer, String> knownData;
+    HashMap<Integer, WeatherInfo> knownData;
 
     /**
      * Konstruktor für einen Client. Sucht zwischen den übergebenen Parametern nach einem freien Port.
@@ -26,7 +26,7 @@ public class Client {
      * @param maxPort obere Grenze für Portrange
      */
     public Client(int minPort, int maxPort) {
-        this.knownData = new HashMap<Integer, String>();
+        this.knownData = new HashMap<>();
         this.isRunning = false;
         this.portRange = new int[(maxPort - minPort) + 1];
         for (int i = minPort; i <= maxPort; i++) {
@@ -154,8 +154,10 @@ public class Client {
     private void handleWeatherInfo(int port, byte[] bytes) {
         System.out.println(this.port + ": got weather from "+port+" :\n"+bytes+"\n");
         WeatherInfo we = (WeatherInfo) (bytesToObject(bytes));
-        String msg = Integer.toString(port) + " : " + we.toString();
-        this.knownData.put(new Integer(port), msg);
+        // String msg = Integer.toString(port) + " : " + we.toString();
+        if (this.knownData.get(new Integer(port)).getTimestamp().after(this.weather.getTimestamp()))
+            this.knownData.put(new Integer(port), we);
+        System.out.println("KNOWN DATA OF "+this.port+this.getKnownDataAsString());
     }
 
     /**
@@ -199,6 +201,7 @@ public class Client {
         try {
             DatagramPacket packet = new DatagramPacket(req, req.length, InetAddress.getByName("localhost"), port);
             ds.send(packet);
+            System.out.println("weather requested");
         }
         catch (Exception e) {
             System.out.println(this.port + ": Failed to send weather request to port "+ port);

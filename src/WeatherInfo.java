@@ -53,6 +53,10 @@ public class WeatherInfo {
         return location;
     }
 
+    public Date getTimestamp() {
+        return timestamp;
+    }
+
     /**
      * Simpler String-Builder für alle relevanten Informationen über das Wetter an einem bestimmten Standort.
      * @return String
