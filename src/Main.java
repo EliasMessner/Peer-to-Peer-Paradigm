@@ -17,10 +17,12 @@ public class Main {
         Client c0 = new Client(50000, 50010);
         c0.startInOwnThread(locations[0]);
         Thread.sleep(2500);
+
         Client c1 = new Client(50000, 50010);
         c1.startInOwnThread(locations[1]);
         Thread.sleep(10000);
         System.out.println("c2 joining in 10 sec...");
+
         Thread.sleep(10000);
         c0.stop();
         Client c2 = new Client(50000, 50010);

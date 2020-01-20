@@ -30,7 +30,7 @@ public class Client {
         this.isRunning = false;
         this.portRange = new int[(maxPort - minPort) + 1];
         for (int i = minPort; i <= maxPort; i++) {
-            System.out.println(i);
+            // System.out.println(i);
             portRange[i - minPort] = i;
         }
     }
@@ -144,7 +144,7 @@ public class Client {
             String msg = new String(buffer, 0, packet.getLength());
             if (msg.equals("hello")) {
                 sendAllWeatherData(packet.getPort());
-                System.out.println(this.port+": sent weather data to "+packet.getPort());
+                // System.out.println(this.port+": sent weather data to "+packet.getPort());
                 return true;
             }
         } catch (IOException e) {
@@ -188,13 +188,13 @@ public class Client {
 
     private void handleWeatherInfo(byte[] bytes) {
         WeatherInfo wi = (WeatherInfo)bytesToObject(bytes);
-        System.out.println(this.port + ": !!!got weather in "+wi.getLocation());
+        System.out.println("\n"+this.port + ": !!!got weather in "+wi.getLocation());
         if (this.knownData.get(wi.getLocation()) == null
                 || this.knownData.get(wi.getLocation()).getTimestamp().before(wi.getTimestamp()))
             this.knownData.put(wi.getLocation(), wi);
 
         System.out.println("updated knownData");
-        System.out.println("KNOWN DATA OF "+this.port+":\n"+this.getKnownDataAsString());
+        System.out.println("KNOWN DATA OF "+this.port+":\n"+this.getKnownDataAsString()+"\n");
     }
 
 
