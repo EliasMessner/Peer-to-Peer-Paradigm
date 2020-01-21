@@ -26,7 +26,7 @@ public class Main {
         Thread.sleep(10000);
         c0.stop();
         Client c2 = new Client(50000, 50010);
-        c2.startInOwnThread(locations[(int)(Math.random() * locations.length)]);
+        c2.startInOwnThread(locations[2]);
         Thread.sleep(5000);
         // System.out.println("\n\n######\n\nc2 knows: \n"+c2.getKnownDataAsString()+"\n\n#######\n\n");
         Thread.sleep(1000000);
