@@ -16,21 +16,40 @@ public class Client {
     private ServerSocket ssocket;
     private DatagramSocket ds;
     private WeatherInfo weather;
-    Date lastTimeWeatherChanged;
-    int port;
-    HashMap<Integer, String> knownData;
+    private Date lastTimeWeatherChanged;
+    private Date lastTimeAdvertised;
+    private int port;
+    private String name;
+    private HashMap<String, WeatherInfo> knownData; //<location, weatherInfo>
 
     /**
      * Konstruktor für einen Client. Sucht zwischen den übergebenen Parametern nach einem freien Port.
      * @param minPort untere Grenze für Portrange
      * @param maxPort obere Grenze für Portrange
      */
-    public Client(int minPort, int maxPort) {
-        this.knownData = new HashMap<Integer, String>();
+    public Client(String name, int minPort, int maxPort) {
+        this.name = name;
+        this.knownData = new HashMap<>();
         this.isRunning = false;
         this.portRange = new int[(maxPort - minPort) + 1];
         for (int i = minPort; i <= maxPort; i++) {
-            System.out.println(i);
+            // System.out.println(i);
+            portRange[i - minPort] = i;
+        }
+    }
+
+    /**
+     * overload contructor
+     * @param minPort
+     * @param maxPort
+     */
+    public Client(int minPort, int maxPort) {
+        this.name = null;
+        this.knownData = new HashMap<>();
+        this.isRunning = false;
+        this.portRange = new int[(maxPort - minPort) + 1];
+        for (int i = minPort; i <= maxPort; i++) {
+            // System.out.println(i);
             portRange[i - minPort] = i;
         }
     }
@@ -47,18 +66,16 @@ public class Client {
             return;
         }
         this.weather = new WeatherInfo(location);
+        this.knownData.put(location, this.weather);
         isRunning = true;
-        startListeningThread();
-        while (isRunning) {
-            advertise();
-            Thread.sleep(3000);
-            if (checkIfTimeToChangeWeather())
-                changWeather();
-        }
+        startCommunicationThread();
+        System.out.println("Client started. \nname: "+getName()+"\nport: " +port+"\nlocation: "+getLocation()+"\n");
     }
 
     public void stop() {
         isRunning = false;
+        System.out.println("Client stopped. \nname: "+getName()+"\nport: " +port+"\nlocation: "+getLocation()+"\n");
+
     }
 
     /**
@@ -81,17 +98,37 @@ public class Client {
     }
 
     /**
-     * Erzeugt neuen Thread für Client und lässt ihn auf Anfragen warten.
-     */
-    private void startListeningThread() {
+     * erzeugt neuen Thread und hört auf Anfragen von anderen clients,
+     * regelnmäßig advertising, also Anfragen an alle ports in portrange
+     *
+     * */
+    private void startCommunicationThread() {
         new Thread(new Runnable() {
             @Override
             public void run() {
-                while (isRunning)
+                while (isRunning) {
+                    /*boolean discovered = discoverAndReply();
+                    while(!discovered && !checkIfTimeToAdvertise() && isRunning){
+                        discovered = discoverAndReply();
+                    }*/
                     discoverAndReply();
+                    try {
+                        advertise();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    } finally {
+                        try {
+                            Thread.sleep(3000);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                    if (checkIfTimeToChangeWeather())
+                        changWeather();
+                }
             }
         }).start();
-        System.out.println(this.port + ": Listening Thread started.");
+        System.out.println(this.name+"(port:"+this.port+"): Communication Thread started.");
     }
 
     /**
@@ -103,58 +140,89 @@ public class Client {
             if (this.port == port) continue;
             requestWeatherInfo(port);
         }
+        // System.out.println(this.port+": advertised");
     }
 
     /**
      * Bearbeitet ankommende Pakete anderer Clients und verwaltet diese.
      */
-    private void discoverAndReply() {
+    private boolean discoverAndReply() {
         byte[] data = new byte[ 1000000 ];
         DatagramPacket packet = new DatagramPacket( data, data.length ); //create packet with buffer size
         try {
+            int timeoutBefore = ds.getSoTimeout();
+            ds.setSoTimeout(5000); //5 sec
             ds.receive(packet);
+            ds.setSoTimeout(timeoutBefore);
+        }
+        catch(java.net.SocketTimeoutException e){
+            return false;
         }
         catch(Exception e) {
-            //timeout or other error
             e.printStackTrace();
-            return;
+            return false;
         }
         byte[] buffer = new byte[1024];
         try {
             buffer = packet.getData();
             String msg = new String(buffer, 0, packet.getLength());
             if (msg.equals("hello")) {
-                sendWeatherData(packet.getPort());
-            }
-            else {
-                System.out.println(this.port + ": got weather from "+packet.getPort()+" :\n"+msg+"\n");
-                this.knownData.put(new Integer(packet.getPort()), msg);
+                sendAllWeatherData(packet.getPort());
+                // System.out.println(this.port+": sent weather data to "+packet.getPort());
+                return true;
             }
         } catch (IOException e) {
             e.printStackTrace();
+            return false;
         }
+        handleWeatherInfo(buffer);
+        return true;
 
+    }
+
+    private void sendAllWeatherData(int destinationPort) throws IOException {
+        for (String loc : this.knownData.keySet()){
+            sendWeatherData(knownData.get(loc), destinationPort);
+        }
     }
 
     /**
      * Übergibt anderen Clients auf einem bestimmten Port ein eigenes Datenpaket.
-     * @param port
+     * @param destinationPort
      * @throws IOException
      */
-    private void sendWeatherData(int port) throws IOException {
-        System.out.println(this.port + ": Trying to send Weather to "+port);
+    private void sendWeatherData(WeatherInfo wi, int destinationPort) throws IOException {
+        // System.out.println(this.port + ": Trying to send Weather to "+port);
         if (!isRunning) return;
-        byte [] msg = this.weather.toString().getBytes();
+        // byte [] msg = this.weather.toString().getBytes();
+        byte [] msg = objectToBytes(wi);
         try {
-            DatagramPacket packet = new DatagramPacket(msg, msg.length, InetAddress.getByName("localhost"), port);
+            DatagramPacket packet = new DatagramPacket(msg, msg.length, InetAddress.getByName("localhost"), destinationPort);
             ds.send(packet);
-            System.out.println(this.port + ": Done sending weather to "+port);
+            // System.out.println(this.port + ": !!!Done sending weather object to "+port);
         }
         catch (Exception e) {
-            System.out.println(this.port + ": Failed to send weather Data to port "+ port);
+            // System.out.println(this.port + ": Failed to send weather Data to port "+ port);
+            throw e;
         }
-        System.out.println(weather.toString());
+        // System.out.println(weather.toString());
     }
+
+    /**
+     * Erstellt WeatherInfo Objekt aus gegebenem byte array und updatet bisherige Wetter-infos falls nötig
+     * @param bytes
+     */
+    private void handleWeatherInfo(byte[] bytes) {
+        WeatherInfo wi = (WeatherInfo)bytesToObject(bytes);
+        System.out.println("\n"+this.port + ": !!!got weather in "+wi.getLocation());
+        if (this.knownData.get(wi.getLocation()) == null
+                || this.knownData.get(wi.getLocation()).getTimestamp().before(wi.getTimestamp()))
+            this.knownData.put(wi.getLocation(), wi);
+
+        System.out.println("updated knownData");
+        System.out.println("KNOWN DATA OF "+this.port+":\n"+this.getKnownDataAsString()+"\n");
+    }
+
 
     /**
      * Ändert das Wetter am Standort des Clients.
@@ -163,6 +231,7 @@ public class Client {
         String loc = this.weather.getLocation();
         this.weather = new WeatherInfo(loc);
         this.lastTimeWeatherChanged = new Date(); //now
+        System.out.println(this.name+"(port:"+this.port+"): Weather changed: "+weather.toString());
     }
 
     /**
@@ -176,12 +245,70 @@ public class Client {
         try {
             DatagramPacket packet = new DatagramPacket(req, req.length, InetAddress.getByName("localhost"), port);
             ds.send(packet);
+            // System.out.println("weather requested");
         }
         catch (Exception e) {
-            System.out.println(this.port + ": Failed to send weather request to port "+ port);
+            System.out.println(this.name+"(port:"+this.port+"): Failed to send weather request to port "+ port);
         }
     }
-    
+
+    /**
+     * wandelt ein Objekt in ein byte Array um
+     * @param o umzuwandelndes Objekt
+     * @return byte array
+     * @throws IOException
+     */
+    private byte[] objectToBytes(Object o) throws IOException {
+        // o = (WeatherInfo)o;
+        ByteArrayOutputStream bos = new ByteArrayOutputStream(port);
+        ObjectOutputStream out = null;
+        try {
+            out = new ObjectOutputStream(bos);
+            out.writeObject(o);
+            out.flush();
+            byte[] yourBytes = bos.toByteArray();
+            return yourBytes;
+
+        } catch (IOException e) {
+            throw e;
+            // e.printStackTrace();
+        } finally {
+            try {
+                bos.close();
+            } catch (IOException ex) {
+                // ignore close exception
+                throw ex;
+            }
+        }
+        // return null;
+    }
+
+    /**
+     * wandelt ein byte-array in ein Objekt um
+     * @param bytes umzuwandelnde bytes
+     * @return erzeugtes Objekt
+     */
+    private Object bytesToObject(byte[] bytes) {
+        ByteArrayInputStream bis = new ByteArrayInputStream(bytes);
+        ObjectInput in = null;
+        try {
+            in = new ObjectInputStream(bis);
+            Object o = in.readObject();
+            return o;
+        } catch (IOException | ClassNotFoundException e) {
+            e.printStackTrace();
+        } finally {
+            try {
+                if (in != null) {
+                    in.close();
+                }
+            } catch (IOException ex) {
+                // ignore close exception
+            }
+        }
+        return null;
+    }
+
     /**
      * Sucht nach offenem Port in der Portrange und connected zu diesem.
      * @return  boolean portFound (true, falls freier Port gefunden wurde)
@@ -196,7 +323,7 @@ public class Client {
             if (checkPortAndTryConnect(port)) {
                 this.port = port;
                 portFound = true;
-                System.out.println(this.port + ": Connected to "+port);
+                System.out.println(this.name+"(port:"+this.port+"): found open port ---> "+port);
                 break;
             }
         }
@@ -215,7 +342,12 @@ public class Client {
             ds = new DatagramSocket(port);
             ds.setReuseAddress(true);
             return true;
-        } catch (IOException e) {
+        }
+         catch(java.net.BindException e) {
+             // port in use, move on
+             return false;
+        }
+         catch (IOException e) {
              e.printStackTrace();
         }
 
@@ -229,7 +361,19 @@ public class Client {
     private boolean checkIfTimeToChangeWeather() {
         if (lastTimeWeatherChanged == null)
             return false;
-        return getDateDiff(lastTimeWeatherChanged, new Date(), TimeUnit.MINUTES) > 5;
+        return getDateDiff(lastTimeWeatherChanged, new Date(), TimeUnit.MINUTES) > 1;
+    }
+
+    /**
+     * Setzt einen boolean auf 'true', wenn die letzte Wetteränderung länger als 5min her ist.
+     * @return boolean
+     */
+    private boolean checkIfTimeToAdvertise() {
+        if (lastTimeAdvertised == null)
+            return false;
+        boolean result =  getDateDiff(lastTimeAdvertised, new Date(), TimeUnit.SECONDS) > 30;
+        System.out.println(result);
+        return result;
     }
 
     /**
@@ -250,9 +394,21 @@ public class Client {
      */
     public String getKnownDataAsString() {
         StringBuilder result = new StringBuilder("");
-        for(Integer i : this.knownData.keySet()) {
-            result.append("\n"+i.toString()+knownData.get(i)+"\n");
+        for(String loc : this.knownData.keySet()) {
+            result.append("\n"+loc+knownData.get(loc)+"\n");
         }
         return result.toString();
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public int getPort() {
+        return port;
+    }
+
+    public String getLocation() {
+        return weather.getLocation();
     }
 }
